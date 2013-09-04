@@ -118,6 +118,18 @@ So that class can be applied to any element on a page that can be used to signif
 Once facetview has executed a query, the querystring used is available under "options.querystring".
 And the result object as retrieved directly from the index is available under "options.rawdata".
 
+branding_header
+---------------
+HTML to be displayed above the facets.
+
+search_url
+----------
+The URL at the index to which searches should be submitted in order to retrieve JSON results.
+
+template_callback
+-----------
+A function that accepts all the matched results and returns HTML 
+
 searchbox_class
 ---------------
 This should only be set if embedded_search is set to false, and if an alternative search box on the page should 
@@ -187,13 +199,6 @@ Whether or not to include full facet settings in the querystring when it is requ
 This makes it easier to get the querystring for other purposes, but does not change the query that is 
 sent to the index.
 
-result_display
---------------
-A display template for search results. It is a list of lists.
-Each list specifies a line. Within each list, specify the contents of the line using objects to describe 
-them. Each content piece should pertain to a particular "field" of the result set, and should specify what 
-to show "pre" and "post" the given field
-
 display_images
 --------------
 Default to true, in which case any image found in a given result object will be displayed to the left 
@@ -204,9 +209,6 @@ description
 Just an option to provide a human-friendly description of the functionality of the instantiated facetview.
 Like "search my shop". Will be displayed on the page. 
 
-search_url
-----------
-The URL at the index to which searches should be submitted in order to retrieve JSON results.
 
 datatype
 --------
@@ -309,10 +311,6 @@ pushstate
 ---------
 Updates the URL string with the current query when the user changes the search terms
 
-linkify
--------
-Makes any URLs in the result contents into clickable links
-
 default_operator
 ----------------
 Sets the default operator in text search strings - elasticsearch uses OR by default, but can also be AND
@@ -332,62 +330,6 @@ search box - the end user will not know they are happening.
 (function($){
     $.fn.facetview = function(options) {
 
-        // a big default value (pulled into options below)
-        // demonstrates how to specify an output style based on the fields that can be found in the result object
-        // where a specified field is not found, the pre and post for it are just ignored
-        var resdisplay = [
-                [
-                    {
-                        "field": "author.name"
-                    },
-                    {
-                        "pre": "(",
-                        "field": "year",
-                        "post": ")"
-                    }
-                ],
-                [
-                    {
-                        "pre": "<strong>",
-                        "field": "title",
-                        "post": "</strong>"
-                    }
-                ],
-                [
-                    {
-                        "field": "howpublished"
-                    },
-                    {
-                        "pre": "in <em>",
-                        "field": "journal.name",
-                        "post": "</em>,"
-                    },
-                    {
-                        "pre": "<em>",
-                        "field": "booktitle",
-                        "post": "</em>,"
-                    },
-                    {
-                        "pre": "vol. ",
-                        "field": "volume",
-                        "post": ","
-                    },
-                    {
-                        "pre": "p. ",
-                        "field": "pages"
-                    },
-                    {
-                        "field": "publisher"
-                    }
-                ],
-                [
-                    {
-                        "field": "link.url"
-                    }
-                ]
-            ];
-
-
         // specify the defaults
         var defaults = {
             "config_file": false,
@@ -402,7 +344,6 @@ search box - the end user will not know they are happening.
             "extra_facets": {},
             "enable_rangeselect": false,
             "include_facets_in_querystring": false,
-            "result_display": resdisplay,
             "display_images": true,
             "search_url":"",
             "datatype":"jsonp",
@@ -429,9 +370,10 @@ search box - the end user will not know they are happening.
             "fadein":800,
             "post_search_callback": false,
             "pushstate": true,
-            "linkify": true,
             "default_operator": "OR",
-            "default_freetext_fuzzify": false
+            "default_freetext_fuzzify": false,
+            "template_callback": null,
+            "branding_header":""
         };
 
 
@@ -606,10 +548,10 @@ search box - the end user will not know they are happening.
                 var thefilters = '';
                 for ( var idx = 0; idx < filters.length; idx++ ) {
                     var _filterTmpl = '<table id="facetview_{{FILTER_NAME}}" class="facetview_filters table table-bordered table-condensed table-striped" style="display:none;"> \
-                        <tr><td><a class="facetview_filtershow" title="filter by {{FILTER_DISPLAY}}" rel="{{FILTER_NAME}}" \
-                        style="color:#333; font-weight:bold;" href=""><i class="icon-plus"></i> {{FILTER_DISPLAY}} \
+                        <tr><td><a class="facetview_filtershow facetview_open" title="filter by {{FILTER_DISPLAY}}" rel="{{FILTER_NAME}}" \
+                        style="color:#333; font-weight:bold;" href=""><i class="icon-minus"></i> {{FILTER_DISPLAY}} \
                         </a> \
-                        <div class="btn-group facetview_filteroptions" style="display:none; margin-top:5px;"> \
+                        <div class="btn-group facetview_filteroptions" style="display:inline-block; margin-top:5px;"> \
                             <a class="btn btn-small facetview_learnmore" title="click to view search help information" href="#"><b>?</b></a> \
                             <a class="btn btn-small facetview_morefacetvals" title="filter list size" rel="{{FACET_IDX}}" href="{{FILTER_EXACT}}">{{FILTER_HOWMANY}}</a> \
                             <a class="btn btn-small facetview_sort {{FILTER_SORTTERM}}" title="filter value order" href="{{FILTER_EXACT}}">{{FILTER_SORTCONTENT}}</a> \
@@ -777,71 +719,7 @@ search box - the end user will not know they are happening.
                 dosearch();
             }
         };
-
-        // given a result record, build how it should look on the page
-        var buildrecord = function(index) {
-            var record = options.data['records'][index];
-            var result = options.resultwrap_start;
-            // add first image where available
-            if (options.display_images) {
-                var recstr = JSON.stringify(record);
-                var regex = /(http:\/\/\S+?\.(jpg|png|gif|jpeg))/;
-                var img = regex.exec(recstr);
-                if (img) {
-                    result += '<img class="thumbnail" style="float:left; width:100px; margin:0 5px 10px 0; max-height:150px;" src="' + img[0] + '" />';
-                }
-            }
-            // add the record based on display template if available
-            var display = options.result_display;
-            var lines = '';
-            for ( var lineitem = 0; lineitem < display.length; lineitem++ ) {
-                line = "";
-                for ( var object = 0; object < display[lineitem].length; object++ ) {
-                    var thekey = display[lineitem][object]['field'];
-                    parts = thekey.split('.');
-                    // TODO: this should perhaps recurse..
-                    if (parts.length == 1) {
-                        var res = record;
-                    } else if (parts.length == 2) {
-                        var res = record[parts[0]];
-                    } else if (parts.length == 3) {
-                        var res = record[parts[0]][parts[1]];
-                    }
-                    var counter = parts.length - 1;
-                    if (res && res.constructor.toString().indexOf("Array") == -1) {
-                        var thevalue = res[parts[counter]];  // if this is a dict
-                    } else {
-                        var thevalue = [];
-                        if ( res !== undefined ) {
-                            for ( var row = 0; row < res.length; row++ ) {
-                                thevalue.push(res[row][parts[counter]]);
-                            }
-                        }
-                    }
-                    if (thevalue && thevalue.toString().length) {
-                        display[lineitem][object]['pre']
-                            ? line += display[lineitem][object]['pre'] : false;
-                        if ( typeof(thevalue) == 'object' ) {
-                            for ( var val = 0; val < thevalue.length; val++ ) {
-                                val != 0 ? line += ', ' : false;
-                                line += thevalue[val];
-                            }
-                        } else {
-                            line += thevalue;
-                        }
-                        display[lineitem][object]['post'] 
-                            ? line += display[lineitem][object]['post'] : line += ' ';
-                    }
-                }
-                if (line) {
-                    lines += line.replace(/^\s/,'').replace(/\s$/,'').replace(/\,$/,'') + "<br />";
-                }
-            }
-            lines ? result += lines : result += JSON.stringify(record,"","    ");
-            result += options.resultwrap_end;
-            return result;
-        };
-
+        
         // view a full record when selected
         var viewrecord = function(event) {
             event.preventDefault();
@@ -925,12 +803,7 @@ search box - the end user will not know they are happening.
 
             // put the filtered results on the page
             $('#facetview_results',obj).html("");
-            var infofiltervals = new Array();
-            $.each(data.records, function(index, value) {
-                // write them out to the results div
-                 $('#facetview_results', obj).append( buildrecord(index) );
-                 options.linkify ? $('#facetview_results tr:last-child', obj).linkify() : false;
-            });
+            $('#facetview_results', obj).append( options.template_callback(data.records) );
             if ( options.result_box_colours.length > 0 ) {
                 jQuery('.result_box', obj).each(function () {
                     var colour = options.result_box_colours[Math.floor(Math.random()*options.result_box_colours.length)] ;
@@ -1249,7 +1122,7 @@ search box - the end user will not know they are happening.
         // the facet view object to be appended to the page
         var thefacetview = '<div id="facetview"><div class="row-fluid">';
         if ( options.facets.length > 0 ) {
-            thefacetview += '<div class="span3"><div id="facetview_filters" style="padding-top:45px;"></div></div>';
+            thefacetview += '<div class="span3">' +options.branding_header + '<div id="facetview_filters" style="padding-top:45px;"></div></div>';
             thefacetview += '<div class="span9" id="facetview_rightcol">';
         } else {
             thefacetview += '<div class="span12" id="facetview_rightcol">';
